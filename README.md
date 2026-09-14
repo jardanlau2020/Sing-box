@@ -2,7 +2,7 @@
 
 ## ⭐ Star 一下支持项目 ⭐
 
-本项目是一个专为 **100M 限制低内存容器**（如 Pella、Lunes 等）打造的轻量级 VMess-WS + Argo 隧道代理节点托管服务。
+本项目是一个专为 **100M 限制低内存容器**（如 Pella、Lunes 等）打造的轻量级 VLESS\VMess\Trojan - WS + Argo 隧道代理节点托管服务。
 
 采用 **“Go 语言原生机器码 + 超轻量 Python Gunicorn 引导”** 架构，将容器运行总内存降至 **25MB ~ 40MB**，即使在节点大流量并发传输时也绝对不会产生 OOM（内存爆满崩溃重启）。
 
@@ -12,7 +12,7 @@
 
 1. **极致内存优化 (25MB ~ 40MB)**
    - 核心代理与进程控制使用 Go 语言原生实现，去除了 Python 虚拟机与庞大框架的 ~25MB 硬性基准内存开销。
-   - 彻底移除了 WARP (WireGuard) 路由和远程 Geosite 规则下载，仅保留极简 `vmess-ws-in` 与 `direct` 出站。
+   - 彻底移除了 WARP (WireGuard) 路由和远程 Geosite 规则下载，仅保留极简 `VLESS\VMess\Trojan-Ws-in` 与 `direct` 出站。
 
 2. **双模式隧道自动切换 (固定隧道 vs 临时隧道)**
    - **固定隧道**：填写 `ARGO_DOMAIN` 与 `ARGO_AUTH` 环境变量，自动建立 Cloudflare 自定义固定隧道。
@@ -48,7 +48,7 @@
 | 环境变量 | 默认值 | 说明 |
 | :--- | :--- | :--- |
 | **`FILE_PATH`** | `.cache` | 运行路径，sub.txt 保存目录 |
-| **`UUID`** | `5520fab5-56d4-48cb-8156-e58b1cc18442` | VMess 用户 UUID |
+| **`UUID`** | `5520fab5-56d4-48cb-8156-e58b1cc18442` | 用户 UUID |
 | **`ARGO_DOMAIN`** | `""` | 固定隧道域名 |
 | **`ARGO_AUTH`** | `""` | 固定隧道 Token |
 | **`ARGO_PORT`** | `8001` | Argo 隧道本地监听端口 |
