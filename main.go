@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -166,6 +168,10 @@ func generateSingboxConfig() {
 	portNum := 8001
 	fmt.Sscanf(argoPort, "%d", &portNum)
 
+	portVless := portNum + 10
+	portVmess := portNum + 20
+	portTrojan := portNum + 30
+
 	config := map[string]interface{}{
 		"log": map[string]interface{}{
 			"disabled": true,
@@ -173,18 +179,54 @@ func generateSingboxConfig() {
 		},
 		"inbounds": []interface{}{
 			map[string]interface{}{
-				"tag":         "vmess-ws-in",
-				"type":        "vmess",
-				"listen":      "::",
-				"listen_port": portNum,
+				"tag":         "vless-ws-in",
+				"type":        "vless",
+				"listen":      "127.0.0.1",
+				"listen_port": portVless,
 				"users": []interface{}{
 					map[string]interface{}{
+						"name": "vless",
+						"uuid": uuidStr,
+						"flow": "",
+					},
+				},
+				"transport": map[string]interface{}{
+					"type":                   "ws",
+					"path":                   "/vless-argo",
+					"early_data_header_name": "Sec-WebSocket-Protocol",
+				},
+			},
+			map[string]interface{}{
+				"tag":         "vmess-ws-in",
+				"type":        "vmess",
+				"listen":      "127.0.0.1",
+				"listen_port": portVmess,
+				"users": []interface{}{
+					map[string]interface{}{
+						"name": "vmess",
 						"uuid": uuidStr,
 					},
 				},
 				"transport": map[string]interface{}{
 					"type":                   "ws",
 					"path":                   "/vmess-argo",
+					"early_data_header_name": "Sec-WebSocket-Protocol",
+				},
+			},
+			map[string]interface{}{
+				"tag":         "trojan-ws-in",
+				"type":        "trojan",
+				"listen":      "127.0.0.1",
+				"listen_port": portTrojan,
+				"users": []interface{}{
+					map[string]interface{}{
+						"name":     "trojan",
+						"password": uuidStr,
+					},
+				},
+				"transport": map[string]interface{}{
+					"type":                   "ws",
+					"path":                   "/trojan-argo",
 					"early_data_header_name": "Sec-WebSocket-Protocol",
 				},
 			},
@@ -198,6 +240,47 @@ func generateSingboxConfig() {
 	}
 	data, _ := json.MarshalIndent(config, "", "  ")
 	os.WriteFile(configPath, data, 0644)
+}
+
+func startInternalProxy() {
+	portNum := 8001
+	fmt.Sscanf(argoPort, "%d", &portNum)
+
+	vlessTarget, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", portNum+10))
+	vmessTarget, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", portNum+20))
+	trojanTarget, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", portNum+30))
+
+	createProxy := func(target *url.URL) *httputil.ReverseProxy {
+		proxy := httputil.NewSingleHostReverseProxy(target)
+		proxy.FlushInterval = -1
+		return proxy
+	}
+
+	vlessProxy := createProxy(vlessTarget)
+	vmessProxy := createProxy(vmessTarget)
+	trojanProxy := createProxy(trojanTarget)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/vmess") {
+			vmessProxy.ServeHTTP(w, r)
+		} else if strings.HasPrefix(r.URL.Path, "/trojan") {
+			trojanProxy.ServeHTTP(w, r)
+		} else {
+			vlessProxy.ServeHTTP(w, r)
+		}
+	})
+
+	server := &http.Server{
+		Addr:    fmt.Sprintf(":%d", portNum),
+		Handler: mux,
+	}
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			fmt.Printf("Proxy server error: %v\n", err)
+		}
+	}()
 }
 
 func getArgoDomainFromLog() string {
@@ -224,9 +307,16 @@ func generateNodes(domain string) string {
 	cfPortNum := 443
 	fmt.Sscanf(cfPort, "%d", &cfPortNum)
 
+	// 1. VLESS 节点
+	vlessRemark := nodeName + "-VLESS"
+	vlessNode := fmt.Sprintf("vless://%s@%s:%d?encryption=none&security=tls&sni=%s&fp=firefox&type=ws&host=%s&path=%%2Fvless-argo%%3Fed%%3D2560#%s",
+		uuidStr, cfIP, cfPortNum, domain, domain, url.QueryEscape(vlessRemark))
+
+	// 2. VMess 节点
+	vmessRemark := nodeName + "-VMess"
 	vmessMap := map[string]interface{}{
 		"v":    "2",
-		"ps":   nodeName,
+		"ps":   vmessRemark,
 		"add":  cfIP,
 		"port": cfPortNum,
 		"id":   uuidStr,
@@ -241,13 +331,20 @@ func generateNodes(domain string) string {
 		"alpn": "",
 		"fp":   "firefox",
 	}
-
 	jsonBytes, _ := json.Marshal(vmessMap)
 	vmessNode := "vmess://" + base64.StdEncoding.EncodeToString(jsonBytes)
-	b64Sub := base64.StdEncoding.EncodeToString([]byte(vmessNode))
+
+	// 3. Trojan 节点
+	trojanRemark := nodeName + "-Trojan"
+	trojanNode := fmt.Sprintf("trojan://%s@%s:%d?security=tls&sni=%s&fp=firefox&type=ws&host=%s&path=%%2Ftrojan-argo%%3Fed%%3D2560#%s",
+		uuidStr, cfIP, cfPortNum, domain, domain, url.QueryEscape(trojanRemark))
+
+	// 节点排序：VLESS -> VMess -> Trojan
+	combinedList := vlessNode + "\n" + vmessNode + "\n" + trojanNode
+	b64Sub := base64.StdEncoding.EncodeToString([]byte(combinedList))
 
 	os.WriteFile(subFilePath, []byte(b64Sub), 0644)
-	os.WriteFile(listFilePath, []byte(vmessNode), 0644)
+	os.WriteFile(listFilePath, []byte(combinedList), 0644)
 
 	return b64Sub
 }
@@ -293,6 +390,7 @@ func startServices() {
 	authorizeFiles([]string{"web", "bot"})
 	setupArgo()
 	generateSingboxConfig()
+	startInternalProxy()
 
 	// 1. Launch Sing-box (web)
 	webBin := filepath.Join(filePath, "web")
