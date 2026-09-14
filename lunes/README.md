@@ -4,3 +4,4 @@
 
 3.选项startup-->Startup Command修改启动命令为bash start.sh
 
+
