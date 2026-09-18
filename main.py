@@ -5,13 +5,13 @@ from flask import Flask
 
 # 环境变量配置；填入 ARGO_DOMAIN 和 ARGO_AUTH 使用固定隧道
 os.environ.setdefault('FILE_PATH', '.cache')
-os.environ.setdefault('UUID', '5520fab5-56d4-48cb-8156-e58b1cc18442')
-os.environ.setdefault('ARGO_DOMAIN', '')
-os.environ.setdefault('ARGO_AUTH', '')
+os.environ.setdefault('UUID', 'ff864e4a-8d94-4716-b1dd-4c5e482d6d9b')
+os.environ.setdefault('ARGO_DOMAIN', 'deplexo.2088x.com')
+os.environ.setdefault('ARGO_AUTH', 'eyJhIjoiZTRiYzc1YTdjMTVjNDNmNDM1NWJjODg1NTc3M2VjZTgiLCJ0IjoiN2NkZDNlMDQtMzZlYy00MTFlLWJhMTMtZjMxZTczYTcxMzM4IiwicyI6IlptSm1aV1ZqWWpRdFpUQTVOeTAwTldWa0xXRmxZelF0Tm1Zek5qazBZMkl6WlRFMiJ9')
 os.environ.setdefault('ARGO_PORT', '8001')
 os.environ.setdefault('CFIP', 'saas.sin.fan')
 os.environ.setdefault('CFPORT', '443')
-os.environ.setdefault('NAME', '')
+os.environ.setdefault('NAME', 'sub')
 
 app = Flask(__name__)
 
